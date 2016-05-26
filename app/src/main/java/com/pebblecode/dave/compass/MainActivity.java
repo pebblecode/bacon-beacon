@@ -1,18 +1,30 @@
 package com.pebblecode.dave.compass;
 
+import android.bluetooth.BluetoothDevice;
 import android.hardware.Sensor;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothAdapter;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.animation.Animation;
 import android.view.animation.RotateAnimation;
 import android.widget.ImageView;
 import android.widget.TextView;
+import java.util.List;
+import android.content.Context;
+
+import com.pebblecode.dave.compass.Classes.BeaconDevice;
+import com.pebblecode.dave.compass.Classes.BeaconFactory;
+
 
 public class MainActivity extends AppCompatActivity {
+
+    private static final String TAG = MainActivity.class.getSimpleName();
 
     private int mAzimuth = 0; // degree
 
@@ -28,6 +40,11 @@ public class MainActivity extends AppCompatActivity {
     boolean haveGravity = false;
     boolean haveAccelerometer = false;
     boolean haveMagnetometer = false;
+
+    private BluetoothAdapter mBluetoothAdapter;
+
+    private int mainBearing = 0;
+
 
     private SensorEventListener mSensorEventListener = new SensorEventListener() {
 
@@ -95,6 +112,10 @@ public class MainActivity extends AppCompatActivity {
             tvHeading.setText(":(");
         }
 
+        final BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        mBluetoothAdapter = bluetoothManager.getAdapter();
+        mBluetoothAdapter.startLeScan(mLeScanCallback);
+
         mHandler = new Handler();
         startRepeatingTask();
     }
@@ -103,7 +124,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void run() {
             try {
-                RotateToTarget(mAzimuth);
+                RotateToTarget(mAzimuth - mainBearing);
             } finally {
                 mHandler.postDelayed(mStatusChecker, mInterval);
             }
@@ -141,6 +162,31 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    // Device scan callback.
+    private BluetoothAdapter.LeScanCallback mLeScanCallback = new BluetoothAdapter.LeScanCallback() {
+        @Override
+        public void onLeScan(final BluetoothDevice device, final int rssi, final byte[] scanRecord) {
+            runOnUiThread(new Runnable() {
+
+                @Override
+                public void run() {
+                    List<BeaconDevice> bdevices = BeaconFactory.BuildBeaconMap();
+                    int bearing = 0;
+
+                    for(int i = 0; i<bdevices.size(); i++){
+                        if(device.getAddress().equals(bdevices.get(i).getDeviceId())){
+                            bearing = bdevices.get(i).getBearing();
+                            if(rssi < 90 && bearing > 0){
+                                mainBearing = bearing;
+                            }
+                        }
+                    }
+
+                    Log.d(TAG, "bearing:" + bearing + ", " + device.getAddress() + ", " + rssi);
+                }
+            });
+        }
+    };
 
     @Override
     protected void onResume() {
